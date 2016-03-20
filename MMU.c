@@ -47,9 +47,10 @@ int main(int argc,char *argv[]) {
         printf("Usage:");
         exit(EXIT_FAILURE);
     }
+
 //----Create the page table
     if ((SegmentID = shmget(SharedMemoryKey,
-NumberOfPages*sizeof(page_table_entry),0)) == -1 ||
+NumberOfPages*sizeof(page_table_entry),0660)) == -1 ||
 (PageTable = (page_table_pointer)shmat(SegmentID,NULL,0)) == NULL) {
         perror("ERROR: Could not get page table");
         exit(EXIT_FAILURE);
@@ -60,6 +61,7 @@ NumberOfPages*sizeof(page_table_entry),0)) == -1 ||
         printf("ERROR: Could not initialize continue handler\n");
         exit(EXIT_FAILURE);
     }
+
     printf("Initialized page table:\n");
     PrintPageTable(PageTable,NumberOfPages);
     printf("\n");
@@ -95,6 +97,9 @@ Mode,Page);
                 printf("Set the dirty bit for page %d\n",Page);
                 PageTable[Page].Dirty = 1;
             }
+//----Update Time Counter
+            PageTable[Page].timeLastAccessed = clock();
+
             PrintPageTable(PageTable,NumberOfPages);
             printf("\n");
         }
