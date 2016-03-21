@@ -12,9 +12,10 @@
 #include <sys/stat.h>
 #include "PageTable.h"
 
-bool received=false;
 int NumberOfPages,NumberOfFrames,AvailableFrames;
 int discAccessCounter=0;
+int SegmentId;
+page_table_pointer PageTable;
 
 int AlocateRandom()
 {
@@ -42,6 +43,7 @@ int AlocateVictim(page_table_pointer P)
 
 	printf("Choose a victim page %d\n",victimIndex);
 
+//----Check if Dirty
 	if (P[victimIndex].Dirty)
 	{
 		printf("Victim is dirty, write out\n");
@@ -49,6 +51,7 @@ int AlocateVictim(page_table_pointer P)
 		sleep(1);
 	}
 	int ret=P[victimIndex].Frame;
+//----Reinitialize page
 	P[victimIndex].Valid=0;
 	P[victimIndex].Frame=-1;
 	P[victimIndex].Dirty=0;
@@ -90,37 +93,32 @@ void request_handler(int pages, page_table_pointer P){
 	{
 		discAccessCounter++;
 		sleep(1);
-		printf("Unblock MMU\n");
+		printf("Unblock MMU\n\n");
 		kill(tmp,SIGCONT); //send SIGCONT to MMU
 	}
 	else
 	{
-  // 	if (shmdt(PageTable) == -1) {
-  //       	perror("ERROR: Error detaching segment");
-  //       	exit(EXIT_FAILURE);
-  //   	}
-  //   	if (shmctl(SegmentId, IPC_RMID, NULL) == -1) {
-  //   		perror("ERROR: Error removing segment");
-  //       	exit(EXIT_FAILURE);
-  //   	}
-    	printf("%d\n",discAccessCounter);
+  		if (shmdt(PageTable) == -1) {
+        	perror("ERROR: Error detaching segment");
+        	exit(EXIT_FAILURE);
+    	}
+    	if (shmctl(SegmentId, IPC_RMID, NULL) == -1) {
+    		perror("ERROR: Error removing segment");
+        	exit(EXIT_FAILURE);
+    	}
+    	printf("%d disk accesses required\n",discAccessCounter);
 		exit(EXIT_SUCCESS);
 	}
 }
 
 void sig_handler(int signo){
 	if (signo == SIGUSR1){
-		printf("received SIGUSR1\n");
-		received = true;
+		request_handler(NumberOfPages,PageTable);
 	}
 }
 
 int main(int argc, char *argv[]){
 	key_t key=getpid();
-	int SegmentId;
-	int size;
-	page_table_pointer PageTable;
-
 
 	NumberOfFrames = atoi(argv[argc-1]);
 	NumberOfPages  = atoi(argv[1]);
@@ -128,30 +126,30 @@ int main(int argc, char *argv[]){
 
 	if((SegmentId = shmget(key,NumberOfPages*sizeof(page_table_entry),IPC_CREAT | 0660)) == -1){
 		perror("shmget");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	if ((PageTable=(page_table_pointer)shmat(SegmentId, NULL, 0)) == NULL){
 		perror("shmat");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
-	printf ("Shared Memory Key : %d\n",key);
+	printf ("The Shared Memory Key (PID) is %d\n",key);
+
+//----Initializing Page Table
 	for (int i=0;i<NumberOfPages;i++){
-		// PageTable++;
-		// printf("%d\n", PageTable);
 		PageTable[i].Valid=0;
 		PageTable[i].Frame=-1;
 		PageTable[i].Dirty=0;
 		PageTable[i].Requested=0;
 	}
+	printf("Initialized Page Table\n\n");
 
-	while (true) {
-		while(!received){
-			if (signal(SIGUSR1,sig_handler) == SIG_ERR){
-				printf("can't catch SIGUSR1\n");
-			}
-		}
-		received = 0;
-		request_handler(NumberOfPages,PageTable);
+//----Initialize Signal Handler
+	if (signal(SIGUSR1,sig_handler) == SIG_ERR){
+		perror("error initizialing signal handler\n");
+		exit(EXIT_FAILURE);
 	}
+
+//----Waiting for signal
+	while (1) {}
 }
